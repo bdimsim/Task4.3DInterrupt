@@ -21,9 +21,9 @@ volatile uint8_t yellowLedState = LOW;
 
 BH1750 lightSensor;
 DHT dht(dhtPin, DHTTYPE);
-SAMDTimer ITimer0(TIMER_TC3);
-SAMDTimer ITimer1(TIMER_TC4);
-SAMDTimer ITimer2(TIMER_TCC);
+SAMDTimer ITimer0(TIMER_TC3); // Timer for blue LED
+SAMDTimer ITimer1(TIMER_TC4); // Timer for light sensor
+SAMDTimer ITimer2(TIMER_TCC); // Timer for DHT sensor
 
 void buttonRedLedToggle() {
   static unsigned long lastInterruptTime = 0;
@@ -38,7 +38,7 @@ void buttonRedLedToggle() {
 
 void periodicBlueLedToggle() {
   blueLedState = !blueLedState; // Toggle the LED state
-  digitalWrite(blueLedPin, blueLedState); // Set the LED to the new state
+  digitalWrite(blueLedPin, blueLedState); // Update the LED
 }
 
 void periodicLightSensor() {
@@ -63,7 +63,6 @@ void periodicDhtSensor() {
   Serial.print(F("%, Temperature: "));
   Serial.print(t);
   Serial.println(F(" °C"));
-  
 }
 
 void setup() {
@@ -74,10 +73,10 @@ void setup() {
   pinMode(blueLedPin, OUTPUT); // LOW
   pinMode(redLedPin, OUTPUT); // LOW
 
-  attachInterrupt(digitalPinToInterrupt(buttonPin), buttonRedLedToggle, FALLING);
-  ITimer0.attachInterruptInterval_MS(1000, periodicBlueLedToggle);
-  ITimer1.attachInterruptInterval_MS(500, periodicLightSensor);
-  ITimer2.attachInterruptInterval_MS(2000, periodicDhtSensor);
+  attachInterrupt(digitalPinToInterrupt(buttonPin), buttonRedLedToggle, FALLING); // Toggle red LED on button press (external interrupt)
+  ITimer0.attachInterruptInterval_MS(1000, periodicBlueLedToggle); // Toggle blue LED every second (internal interrupt)
+  ITimer1.attachInterruptInterval_MS(500, periodicLightSensor); // Read light sensor every 500ms and toggle yellow LED (internal interrupt)
+  ITimer2.attachInterruptInterval_MS(2000, periodicDhtSensor); // Read DHT sensor every 2 seconds and print to serial (internal interrupt)
 
   Serial.begin(115200);
   Wire.begin(); // Enables I2C communication (SDA and SCL pins)
