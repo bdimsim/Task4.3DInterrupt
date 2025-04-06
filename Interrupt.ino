@@ -3,11 +3,14 @@
 
 // Must be placed before the header
 #define USING_TIMER_TC3 true 
-#define USING_TIMER_TC4 true
-#define USING_TIMER_TCC true
+#include <SAMD_ISR_Timer.h>
 #include <SAMDTimerInterrupt.h>
 
 #define DHTTYPE DHT11
+#define HW_INTERVAL_MS 500L // Timer interval for the internal interrupt
+#define TIMER0_INTERVAL_MS 1000L
+#define TIMER1_INTERVAL_MS 500L
+#define TIMER2_INTERVAL_MS 2000L
 
 const uint8_t buttonPin = 2; // Pin for the button
 const uint8_t yellowLedPin = 17;
@@ -21,9 +24,14 @@ volatile uint8_t yellowLedState = LOW;
 
 BH1750 lightSensor;
 DHT dht(dhtPin, DHTTYPE);
-SAMDTimer ITimer0(TIMER_TC3); // Timer for blue LED
-SAMDTimer ITimer1(TIMER_TC4); // Timer for light sensor
-SAMDTimer ITimer2(TIMER_TCC); // Timer for DHT sensor
+
+SAMD_ISR_Timer ISR_Timer;
+SAMDTimer ITimer(TIMER_TC3);
+
+void TimerHandler() {
+  // This function is called every 500ms
+  ISR_Timer.run(); // Call the timer interrupt handler
+}
 
 void buttonRedLedToggle() {
   static unsigned long lastInterruptTime = 0;
@@ -31,33 +39,30 @@ void buttonRedLedToggle() {
   if (millis() - lastInterruptTime > 200) {
     redLedState = !redLedState; // Toggle the LED state
     digitalWrite(redLedPin, redLedState); // Update the LED
-
     lastInterruptTime = millis();
   }
 }
 
-void periodicBlueLedToggle() {
+void toggleBlueLed() {
   blueLedState = !blueLedState; // Toggle the LED state
   digitalWrite(blueLedPin, blueLedState); // Update the LED
 }
 
-void periodicLightSensor() {
+void updateLightSensorAndYellowLed() {
   float lux = lightSensor.readLightLevel();
-
-  if (lux > 400) yellowLedState = HIGH;
-  else yellowLedState = LOW;
-
+  yellowLedState = lux > 400 ? HIGH : LOW; // Set yellow LED state based on light level
   digitalWrite(yellowLedPin, yellowLedState);
 }
 
-void periodicDhtSensor() {
-  float h = dht.readHumidity(); // Read humidity
-  float t = dht.readTemperature(); // Read temperature as Celsius
+void readAndPrintDhtData() {
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
 
   if (isnan(h) || isnan(t)) {
     Serial.println(F("Failed to read from DHT sensor!"));
     return;
   }
+
   Serial.print(F("Humidity: "));
   Serial.print(h);
   Serial.print(F("%, Temperature: "));
@@ -68,15 +73,16 @@ void periodicDhtSensor() {
 void setup() {
   pinMode(buttonPin, INPUT_PULLUP); // HIGH
   pinMode(dhtPin, INPUT_PULLUP); // HIGH
-
   pinMode(yellowLedPin, OUTPUT); // LOW
   pinMode(blueLedPin, OUTPUT); // LOW
   pinMode(redLedPin, OUTPUT); // LOW
 
   attachInterrupt(digitalPinToInterrupt(buttonPin), buttonRedLedToggle, FALLING); // Toggle red LED on button press (external interrupt)
-  ITimer0.attachInterruptInterval_MS(1000, periodicBlueLedToggle); // Toggle blue LED every second (internal interrupt)
-  ITimer1.attachInterruptInterval_MS(500, periodicLightSensor); // Read light sensor every 500ms and toggle yellow LED (internal interrupt)
-  ITimer2.attachInterruptInterval_MS(2000, periodicDhtSensor); // Read DHT sensor every 2 seconds and print to serial (internal interrupt)
+  ITimer.attachInterruptInterval_MS(HW_INTERVAL_MS, TimerHandler); // Call TimerHandler every 500ms (internal interrupt)
+
+  ISR_Timer.setInterval(TIMER0_INTERVAL_MS, toggleBlueLed); // Toggle blue LED every second
+  ISR_Timer.setInterval(TIMER1_INTERVAL_MS, updateLightSensorAndYellowLed); // Read light sensor every 500ms and toggle yellow LED
+  ISR_Timer.setInterval(TIMER2_INTERVAL_MS, readAndPrintDhtData); // Read DHT sensor every 2 seconds and print to serial
 
   Serial.begin(115200);
   Wire.begin(); // Enables I2C communication (SDA and SCL pins)
